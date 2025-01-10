@@ -6,6 +6,37 @@ class DocumentationGenerator:
     def __init__(self, api_key):
         openai.api_key = api_key
         self.model = "gpt-3.5-turbo"
+        self.template = {
+            "system_message": "You are a technical documentation expert. Generate clear, concise, and comprehensive documentation.",
+            "documentation_format": """
+            # {filename} Documentation
+
+            ## Overview
+            {overview}
+
+            ## Functions
+            {functions}
+
+            ## Usage Examples
+            {examples}
+
+            ## Dependencies
+            {dependencies}
+            """,
+            "prompt_template": """Please provide detailed documentation for the following Python code.
+            Follow this structure:
+            1. Brief overview of the code's purpose
+            2. Detailed function descriptions including:
+               - Parameters and their types
+               - Return values and types
+               - Any exceptions raised
+            3. Practical usage examples
+            4. List of dependencies and requirements
+            
+            Code to document:
+            {code_content}
+            """
+        }
 
     def generate_documentation(self, file_path):
         """Generate documentation for a Python file using OpenAI."""
@@ -13,30 +44,37 @@ class DocumentationGenerator:
         with open(file_path, 'r') as file:
             code_content = file.read()
 
-        # Create the prompt for OpenAI
-        prompt = f"""Please provide detailed documentation for the following Python code. 
-        Include:
-        - Overview of the code
-        - Function descriptions
-        - Parameters and return values
-        - Usage examples
-        
-        Code:
-        {code_content}
-        """
+        # Create the prompt using template
+        prompt = self.template["prompt_template"].format(
+            code_content=code_content
+        )
 
         try:
             # Make the API call
             response = openai.ChatCompletion.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a technical documentation expert."},
+                    {"role": "system", "content": self.template["system_message"]},
                     {"role": "user", "content": prompt}
-                ]
+                ],
+                temperature=0.7,  # Add some creativity but keep it professional
+                max_tokens=2000,  # Adjust based on your needs
+                top_p=0.95,
+                frequency_penalty=0.0,
+                presence_penalty=0.0
             )
 
             # Extract the documentation
             documentation = response.choices[0].message.content
+
+            # Format the documentation using the template
+            formatted_doc = self.template["documentation_format"].format(
+                filename=Path(file_path).stem,
+                overview="",  # These will be filled by the AI response
+                functions="",
+                examples="",
+                dependencies=""
+            )
 
             # Create markdown file path
             md_path = Path(file_path).with_suffix('.md')
@@ -50,6 +88,15 @@ class DocumentationGenerator:
         except Exception as e:
             return f"Error generating documentation: {str(e)}"
 
+    def update_template(self, new_template):
+        """
+        Update the documentation template.
+        
+        Args:
+            new_template (dict): New template with keys to update
+        """
+        self.template.update(new_template)
+
 def main():
     # Get OpenAI API key from environment variable
     api_key = os.getenv('OPENAI_API_KEY')
@@ -58,6 +105,13 @@ def main():
 
     # Initialize the documentation generator
     doc_gen = DocumentationGenerator(api_key)
+
+    # Example of updating the template (optional)
+    # custom_template = {
+    #     "system_message": "Your custom system message",
+    #     "documentation_format": "Your custom format"
+    # }
+    # doc_gen.update_template(custom_template)
 
     # Get list of files from user input
     print("Enter the paths of Python files to document (one per line)")
